@@ -6,8 +6,10 @@ extern crate hyper;
 extern crate mime;
 extern crate url;
 
-use futures::{future, Future, Stream};
+use futures::compat::Future01CompatExt;
+use futures::{FutureExt, TryFutureExt};
 use hyper::{Body, StatusCode};
+use legacy_futures::Stream;
 use url::form_urlencoded;
 
 use gotham::handler::{HandlerFuture, IntoHandlerError};
@@ -18,9 +20,10 @@ use gotham::state::{FromState, State};
 
 /// Extracts the elements of the POST request and responds with the form keys and values
 fn form_handler(mut state: State) -> Box<HandlerFuture> {
-    let f = Body::take_from(&mut state)
-        .concat2()
-        .then(|full_body| match full_body {
+    let f = async {
+        let full_body = Body::take_from(&mut state).concat2().compat().await;
+
+        match full_body {
             Ok(valid_body) => {
                 let body_content = valid_body.into_bytes();
                 // Perform decoding on request body
@@ -32,12 +35,12 @@ fn form_handler(mut state: State) -> Box<HandlerFuture> {
                     res_body.push_str(&res_body_line);
                 }
                 let res = create_response(&state, StatusCode::OK, mime::TEXT_PLAIN, res_body);
-                future::ok((state, res))
+                Ok((state, res))
             }
-            Err(e) => future::err((state, e.into_handler_error())),
-        });
-
-    Box::new(f)
+            Err(e) => Err((state, e.into_handler_error())),
+        }
+    };
+    Box::new(f.boxed().compat())
 }
 
 /// Create a `Router`

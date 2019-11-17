@@ -1,14 +1,20 @@
 [package]
-name = "gotham_examples_handlers_form_urlencoded"
+name = "gotham_examples_handlers_form_urlencoded_await"
 description = "An example of decoding requests from an HTML form element"
 version = "0.0.0"
 authors = ["Jacob Budin <self@jacobbudin.com>"]
 publish = false
+edition = "2018"
 
 [dependencies]
 gotham = { path = "../../../gotham" }
 
 hyper = "0.12"
 mime = "0.3"
-futures = "0.1"
+# We need two versions of the futures library. One that matches what Gotham
+# understands, and one that matches what .await understands. Stolen from:
+# https://rust-lang-nursery.github.io/futures-rs/blog/2019/04/18/compatibility-layer.html
+# (although they call the old version futures01 and we call it legacy_futures)
+legacy_futures = {package = "futures", version = "0.1"}
+futures = {package = "futures", version = "0.3.1", features = ["compat"]}
 url = "2.1"

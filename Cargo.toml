@@ -60,6 +60,7 @@ members = [
     "examples/handlers/simple_async_handlers_await",
     "examples/handlers/async_handlers",
     "examples/handlers/form_urlencoded",
+    "examples/handlers/form_urlencoded_await",
     "examples/handlers/multipart",
 
     # static_assets
