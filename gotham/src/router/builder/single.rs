@@ -4,7 +4,7 @@ use std::panic::RefUnwindSafe;
 
 use crate::extractor::{PathExtractor, QueryStringExtractor};
 use crate::handler::assets::{DirHandler, FileHandler, FileOptions, FilePathExtractor};
-use crate::handler::{Handler, HandlerResult, NewHandler};
+use crate::handler::{Handler, HandlerFuture, HandlerResult, NewHandler};
 use crate::pipeline::chain::PipelineHandleChain;
 use crate::router::builder::{
     ExtendRouteMatcher, ReplacePathExtractor, ReplaceQueryStringExtractor, SingleRouteBuilder,
@@ -127,9 +127,9 @@ pub trait DefineSingleRoute {
     /// # use gotham::middleware::session::NewSessionMiddleware;
     /// # use gotham::test::TestServer;
     /// #
-    /// async fn my_handler(state: State) -> HandlerResult {
+    /// async fn my_handler(state: &mut State) -> HandlerResult {
     ///     // Handler implementation elided.
-    /// #   Ok((state, Response::builder().status(StatusCode::ACCEPTED).body(Body::empty()).unwrap()))
+    /// #   Ok(Response::builder().status(StatusCode::ACCEPTED).body(Body::empty()).unwrap())
     /// }
     /// #
     /// # fn router() -> Router {
@@ -152,13 +152,24 @@ pub trait DefineSingleRoute {
     /// #   assert_eq!(response.status(), StatusCode::ACCEPTED);
     /// # }
     /// ```
-    fn to_async<H, Fut>(self, handler: H)
+    fn to_async<'s, H, Fut>(self, handler: H)
     where
         Self: Sized,
-        H: (FnOnce(State) -> Fut) + RefUnwindSafe + Copy + Send + Sync + 'static,
-        Fut: Future<Output = HandlerResult> + Send + 'static,
+        H: (FnOnce(&'_ mut State) -> Fut) + RefUnwindSafe + Copy + Send + Sync + 'static,
+        Fut: Future<Output = HandlerResult> + Send,
     {
-        self.to_new_handler(move || Ok(move |s: State| handler(s).boxed()))
+        self.to_new_handler(move || {
+            Ok(move |mut state: State| {
+                async move {
+                    let res = { handler(&mut state).await };
+                    match res {
+                        Ok(r) => Ok((state, r)),
+                        Err(e) => Err((state, e)),
+                    }
+                }
+                .boxed()
+            })
+        })
     }
     /// Directs the route to the given `NewHandler`. This gives more control over how `Handler`
     /// values are constructed.
